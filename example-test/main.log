@@ -1,0 +1,24 @@
+# main dedupe branch
+# used 3 GB
+
+(dedupe) lorenzo@lorenzo-dev:~/devel/dedupe/example-test$ git checkout main
+Switched to branch 'main'
+Your branch is up to date with 'origin/main'.
+(dedupe) lorenzo@lorenzo-dev:~/devel/dedupe/example-test$ python csv_example.py
+importing data ...
+reading labeled examples from  csv_example_training.json
+prepare_training() took 37.95038461685181
+starting active labeling...
+train() took 2.468275547027588
+clustering...
+clustering took 4.186673164367676
+Took: 44.60937690734863 seconds
+# duplicate sets 949
+
+(dedupe) lorenzo@lorenzo-dev:~/devel/dedupe/example-test$ python csv_evaluation.py
+found duplicate
+11970
+precision
+0.5233082706766917
+recall
+0.9479418886198547

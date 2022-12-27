@@ -1,0 +1,24 @@
+# Custom mod branch
+
+(dedupe) lorenzo@lorenzo-dev:~/devel/dedupe/example-test$ python csv_example.py
+Using dedupe branch: feat/incremental
+importing data ...
+reading labeled examples from  csv_example_training.json
+'y' is <class 'numpy.ndarray'>
+'y' is <class 'numpy.ndarray'>
+'y' is <class 'numpy.ndarray'>
+'y' is <class 'numpy.ndarray'>
+prepare_training() took 36.803335428237915
+starting active labeling...
+train() took 2.520753860473633
+clustering...
+clustering took 4.028240203857422
+Took: 43.35593843460083 seconds
+# duplicate sets 966
+
+found duplicate
+11458
+precision
+0.5272298830511433
+recall
+0.9141949152542372

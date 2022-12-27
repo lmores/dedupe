@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from dedupe import predicates
+from dedupe import _predicates
 
 if TYPE_CHECKING:
-    from typing import Any, ClassVar, Generator, Iterable, Optional, Sequence, Type
+    from typing import Any, ClassVar, Generator, Iterable, Sequence, Type
 
-    from dedupe._typing import Comparator, PredicateFunction, VariableDefinition
+    from dedupe.__typing import Comparator, PredicateFunction, VariableDefinition
 
 
 class Variable(object):
-    name: str
     type: ClassVar[str]
-    predicates: list[predicates.Predicate]
-    higher_vars: Sequence["Variable"]
+
+    name: str
+    predicates: list[_predicates.Predicate]
+    higher_vars: Sequence['Variable']
 
     def __len__(self) -> int:
         return 1
@@ -30,11 +31,10 @@ class Variable(object):
         return self.name == other_name
 
     def __init__(self, definition: VariableDefinition):
-
-        if definition.get("has missing", False):
+        if definition.has_missing:
             self.has_missing = True
             try:
-                exists_pred = predicates.ExistsPredicate(definition["field"])
+                exists_pred = _predicates.ExistsPredicate(definition.field_index)
                 self.predicates.append(exists_pred)
             except KeyError:
                 pass
@@ -50,7 +50,7 @@ class Variable(object):
     @classmethod
     def all_subclasses(
         cls,
-    ) -> Generator[tuple[Optional[str], Type["Variable"]], None, None]:
+    ) -> Generator[tuple[str | None, Type['Variable']], None, None]:
         for q in cls.__subclasses__():
             yield getattr(q, "type", None), q
             for p in q.all_subclasses():
@@ -61,7 +61,7 @@ class DerivedType(Variable):
     type = "Derived"
 
     def __init__(self, definition: VariableDefinition):
-        self.name = "(%s: %s)" % (str(definition["name"]), str(definition["type"]))
+        self.name = "(%s: %s)" % (definition.name, definition.type)
         super(DerivedType, self).__init__(definition)
 
 
@@ -69,34 +69,31 @@ class MissingDataType(Variable):
     type = "MissingData"
 
     def __init__(self, name: str):
-
         self.name = "(%s: Not Missing)" % name
-
         self.has_missing = False
 
 
 class FieldType(Variable):
     _index_thresholds: Sequence[float] = []
-    _index_predicates: Sequence[Type[predicates.IndexPredicate]] = []
+    _index_predicates: Sequence[Type[_predicates.IndexPredicate]] = []
     _predicate_functions: Sequence[PredicateFunction] = ()
-    _Predicate: Type[predicates.SimplePredicate] = predicates.SimplePredicate
+    _Predicate: Type[_predicates.SimplePredicate] = _predicates.SimplePredicate
     comparator: Comparator
-    field: str
 
     def __init__(self, definition: VariableDefinition):
-        self.field = definition["field"]
+        self.field_index = definition.field_index
 
-        if "variable name" in definition:
-            self.name = definition["variable name"]
+        if definition.variable_name is not None:
+            self.name = definition.variable_name
         else:
-            self.name = "(%s: %s)" % (self.field, self.type)
+            self.name = "(%s: %s)" % (self.field_index, self.type)
 
         self.predicates = [
-            self._Predicate(pred, self.field) for pred in self._predicate_functions
+            self._Predicate(pred, self.field_index) for pred in self._predicate_functions
         ]
 
         self.predicates += indexPredicates(
-            self._index_predicates, self._index_thresholds, self.field
+            self._index_predicates, self._index_thresholds, self.field_index
         )
 
         super(FieldType, self).__init__(definition)
@@ -108,31 +105,29 @@ class CustomType(FieldType):
     def __init__(self, definition: VariableDefinition):
         super(CustomType, self).__init__(definition)
 
-        try:
-            self.comparator = definition["comparator"]  # type: ignore[assignment]
-        except KeyError:
+        if definition.comparator is None:
             raise KeyError(
-                "For 'Custom' field types you must define "
-                "a 'comparator' function in the field "
-                "definition. "
+                "For 'Custom' field types you must define a "
+                "'comparator' function in the field definition. "
             )
+        self.comparator = definition.comparator  # type: ignore[assignment]
 
-        if "variable name" not in definition:
+        if definition.variable_name is None:
             self.name = "(%s: %s, %s)" % (
-                self.field,
+                self.field_index,
                 self.type,
                 self.comparator.__name__,
             )
 
 
 def indexPredicates(
-    predicates: Iterable[Type[predicates.IndexPredicate]],
+    predicates: Iterable[Type[_predicates.IndexPredicate]],
     thresholds: Sequence[float],
-    field: str,
-) -> list[predicates.IndexPredicate]:
+    field_index: int,
+) -> list[_predicates.IndexPredicate]:
     index_predicates = []
     for predicate in predicates:
         for threshold in thresholds:
-            index_predicates.append(predicate(threshold, field))
+            index_predicates.append(predicate(threshold, field_index))
 
     return index_predicates

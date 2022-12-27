@@ -10,16 +10,16 @@ import numpy.typing
 import sklearn.linear_model
 
 import dedupe.core as core
-import dedupe.training as training
+import dedupe._training as training
 
 if TYPE_CHECKING:
-    from typing import Dict, Iterable, Literal, Mapping
+    from typing import Dict, Iterable, List, Literal, Mapping
 
-    from dedupe._typing import Data, FeaturizerFunction, Labels, LabelsLike
-    from dedupe._typing import RecordDictPair as TrainingExample
-    from dedupe._typing import RecordDictPairs as TrainingExamples
-    from dedupe._typing import RecordIDPair
-    from dedupe.predicates import Predicate
+    from dedupe.__typing import Data, FeaturizerFunction, Labels, LabelsLike
+    from dedupe.__typing import RecordPair as TrainingExample
+    from dedupe.__typing import RecordPairsList as TrainingExamples
+    from dedupe.__typing import RecordIDPair, NpFloatArray, Record
+    from dedupe._predicates import Predicate
 
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,8 @@ class Learner(ABC, HasCandidates):
         """Train on the given data."""
 
     @abstractmethod
-    def candidate_scores(self) -> numpy.typing.NDArray[numpy.float_]:
-        """For each of self.candidates, return our current guess [0,1] of if a match."""
+    def candidate_scores(self) -> NpFloatArray:
+        """For each of self.candidates, return our current guess in [0,1]."""
 
     @abstractmethod
     def remove(self, index: int) -> None:
@@ -72,19 +72,20 @@ class MatchLearner(Learner):
     def __init__(self, featurizer: FeaturizerFunction, candidates: TrainingExamples):
         self._featurizer = featurizer
         self._candidates = candidates.copy()
-        self._classifier = sklearn.linear_model.LogisticRegression()
+        # self._classifier = sklearn.linear_model.LogisticRegression()
+        self._classifier = sklearn.linear_model.SGDClassifier(loss='log_loss')
         self._features = self._featurizer(self.candidates)
 
     def fit(self, pairs: TrainingExamples, y: LabelsLike) -> None:
         y = self._verify_fit_args(pairs, y)
-        self._classifier.fit(self._featurizer(pairs), numpy.array(y))
+        self._classifier.partial_fit(self._featurizer(pairs), numpy.array(y), classes=(0,1))
         self._fitted = True
 
     def remove(self, index: int) -> None:
         self._candidates.pop(index)
         self._features = numpy.delete(self._features, index, axis=0)
 
-    def candidate_scores(self) -> numpy.typing.NDArray[numpy.float_]:
+    def candidate_scores(self) -> NpFloatArray:
         if not self._fitted:
             raise ValueError("Must call fit() before candidate_scores()")
         return self._classifier.predict_proba(self._features)[:, 1].reshape(-1, 1)
@@ -95,7 +96,7 @@ class BlockLearner(Learner):
 
     def __init__(self):
         self.current_predicates: tuple[Predicate, ...] = ()
-        self._cached_scores: numpy.typing.NDArray[numpy.float_] | None = None
+        self._cached_scores: NpFloatArray | None = None
         self._old_dupes: TrainingExamples = []
 
     def fit(self, pairs: TrainingExamples, y: LabelsLike) -> None:
@@ -133,9 +134,8 @@ class BlockLearner(Learner):
         )
 
     def _predict(self, pairs: TrainingExamples) -> Labels:
-        labels: Labels = []
+        labels: Labels = []  # TODO
         for record_1, record_2 in pairs:
-
             for predicate in self.current_predicates:
                 keys = predicate(record_2, target=True)
                 if keys:
@@ -379,12 +379,15 @@ class DedupeDisagreementLearner(DisagreementLearner):
         index_include: TrainingExamples,
     ):
         super().__init__()
-        data = core.index(data)
+        #data = core.index(data)
 
-        random_pair = (
-            random.choice(list(data.values())),
-            random.choice(list(data.values())),
-        )
+        #random_pair: tuple[Record, Record] = tuple(random.sample(data, 2))  # type: ignore[assignment]
+        random_idxs = random.sample(range(len(data)), 2)
+        random_pair = (data[random_idxs[0]], data[random_idxs[1]])
+        # (
+        #     random.choice(list(data.values())),
+        #     random.choice(list(data.values())),
+        # )
         exact_match = (random_pair[0], random_pair[0])
 
         index_include = index_include.copy()
@@ -411,15 +414,16 @@ class RecordLinkDisagreementLearner(DisagreementLearner):
         index_include: TrainingExamples,
     ):
         super().__init__()
-        data_1 = core.index(data_1)
+        #data_1 = core.index(data_1)
 
         offset = len(data_1)
-        data_2 = core.index(data_2, offset)
+        #data_2 = core.index(data_2, offset)
 
-        random_pair = (
-            random.choice(list(data_1.values())),
-            random.choice(list(data_2.values())),
-        )
+        random_pair = (random.choice(data_1), random.choice(data_2))
+        # (
+        #     random.choice(list(data_1.values())),
+        #     random.choice(list(data_2.values())),
+        # )
         exact_match = (random_pair[0], random_pair[0])
 
         index_include = index_include.copy()
@@ -437,9 +441,8 @@ class RecordLinkDisagreementLearner(DisagreementLearner):
         self.mark(examples, labels)
 
 
-def sample_records(data: Mapping, sample_size: int) -> dict:
-    keys = data.keys()
+def sample_records(data: Data, sample_size: int) -> Data:
     if len(data) > sample_size:
-        keys = random.sample(tuple(keys), sample_size)  # type: ignore[assignment]
-    # Always make a copy to avoid surprises
-    return {k: data[k] for k in keys}
+        data = random.sample(data, sample_size)
+    # NO MORE COPY [Always make a copy to avoid surprises]
+    return data
