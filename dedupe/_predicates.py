@@ -22,12 +22,13 @@ if TYPE_CHECKING:
     from dedupe.index import Index
 
 
+whitespace = re.compile(r"\s")
 words = re.compile(r"[\w']+").findall
 integers = re.compile(r"\d+").findall
 start_word = re.compile(r"^([\w']+)").match
-two_start_words = re.compile(r"^([\w']+\s+[\w']+)").match
+two_start_words = re.compile(r"^([\w']+\W+[\w']+)").match
 start_integer = re.compile(r"^(\d+)").match
-alpha_numeric = re.compile(r"(?=[a-zA-Z]*\d)[a-zA-Z\d]+").findall
+alpha_numeric = re.compile(r"\b[a-zA-Z\d]*(?:[a-zA-Z]\d|\d[a-zA-Z])[a-zA-Z\d]*\b").findall  # r"(?=[a-zA-Z]*\d)[a-zA-Z\d]+").findall
 
 PUNCTABLE = str.maketrans("", "", string.punctuation)
 
@@ -453,9 +454,9 @@ def firstIntegerPredicate(field: str) -> Sequence[str]:
 def ngramsTokens(field: Sequence[Any], n: int) -> set[str]:
     grams = set()
     n_tokens = len(field)
-    for i in range(n_tokens):
+    for i in range(n_tokens - n + 1):
         for j in range(i + n, min(n_tokens, i + n) + 1):
-            grams.add(" ".join(str(tok) for tok in field[i:j]))
+            grams.add(" ".join(field[i:j]))
     return grams
 
 
@@ -468,47 +469,43 @@ def commonThreeTokens(field: str) -> set[str]:
 
 
 def fingerprint(field: str) -> tuple[str]:
-    return ("".join(sorted(field.split())).strip(),)
+    return ("".join(sorted(field.split())),)
 
 
 def oneGramFingerprint(field: str) -> tuple[str]:
-    return ("".join(sorted(set(ngrams(field.replace(" ", ""), 1)))).strip(),)
+    return (''.join(sorted(set(whitespace.sub('', field)))),)
 
 
-def twoGramFingerprint(field: str) -> tuple[str, ...]:
+def twoGramFingerprint(field: str) -> tuple[str]:
     if len(field) > 1:
-        return (
-            "".join(
-                sorted(gram.strip() for gram in set(ngrams(field.replace(" ", ""), 2)))
-            ),
-        )
+        return (''.join(sorted(set(ngrams(whitespace.sub('', field), 2)))),)
     else:
         return ()
 
 
 def commonFourGram(field: str) -> set[str]:
     """return 4-grams"""
-    return set(ngrams(field.replace(" ", ""), 4))
+    return set(ngrams(whitespace.sub('', field), 4))
 
 
 def commonSixGram(field: str) -> set[str]:
     """return 6-grams"""
-    return set(ngrams(field.replace(" ", ""), 6))
+    return set(ngrams(whitespace.sub('', field), 6))
 
 
 def sameThreeCharStartPredicate(field: str) -> tuple[str]:
     """return first three characters"""
-    return initials(field.replace(" ", ""), 3)
+    return initials(whitespace.sub('', field), 3)
 
 
 def sameFiveCharStartPredicate(field: str) -> tuple[str]:
     """return first five characters"""
-    return initials(field.replace(" ", ""), 5)
+    return initials(whitespace.sub('', field), 5)
 
 
 def sameSevenCharStartPredicate(field: str) -> tuple[str]:
     """return first seven characters"""
-    return initials(field.replace(" ", ""), 7)
+    return initials(whitespace.sub('', field), 7)
 
 
 def suffixArray(field: str) -> Iterable[str]:
@@ -519,7 +516,7 @@ def suffixArray(field: str) -> Iterable[str]:
 
 
 def sortedAcronym(field: str) -> tuple[str]:
-    return ("".join(sorted(each[0] for each in field.split())),)
+    return (''.join(sorted(w[0] for w in field.split())),)
 
 
 def doubleMetaphone(field: str) -> set[str]:
